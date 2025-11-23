@@ -1,0 +1,28 @@
+spring:
+  application:
+    name: file-service-api
+
+  profiles:
+    default: dev
+
+  jackson:
+    time-zone: UTC
+    serialization:
+      write-dates-as-timestamps: false
+
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 5MB
+
+file-service:
+  storage:
+    # Base directory for physical file storage (relative to working directory)
+    base-dir: ./data/files
+
+  security:
+    jwt:
+      # WARNING: for challenge/demo only. In real systems this must come from environment.
+      secret: change-this-secret-in-production
+      # Access token lifetime in seconds (30 minutes)
+      expiration-seconds: 1800
