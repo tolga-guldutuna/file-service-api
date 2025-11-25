@@ -12,11 +12,14 @@ import com.fileservice.file.service.FileService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.UrlResource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.net.MalformedURLException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
@@ -69,14 +72,7 @@ public class FileServiceImpl implements FileService {
         // =========================
         // Service-level validation
         // =========================
-        if (sizeBytes > MAX_FILE_SIZE_BYTES) {
-            throw new BusinessException("File size exceeds the maximum limit of 5 MB");
-        }
-
-        String extUpper = extension.toUpperCase();
-        if (!ALLOWED_EXTENSIONS.contains(extUpper)) {
-            throw new BusinessException("File extension '" + extension + "' is not allowed");
-        }
+        validateFile(extension, sizeBytes);
 
         String publicId = UUID.randomUUID().toString();
         String storedName = publicId + "." + extension.toLowerCase();
@@ -102,13 +98,13 @@ public class FileServiceImpl implements FileService {
         entity.setOwner(owner);
         entity.setOriginalName(originalFilename != null ? originalFilename : storedName);
         entity.setStoredName(storedName);
-        entity.setExtension(extUpper);
+        entity.setExtension(extension.toUpperCase());
         entity.setContentType(contentType);
         entity.setSizeBytes(sizeBytes);
         entity.setStoragePath(storagePath);
-        entity.setTemp(false); // default for now
+        entity.setTemp(false);
         entity.setExpiresAt(null);
-        entity.setSha256Hash(null); // can be filled later if hashing is added
+        entity.setSha256Hash(null);
 
         FileEntity saved = fileDao.save(entity);
 
@@ -140,6 +136,101 @@ public class FileServiceImpl implements FileService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public Resource loadFileAsResource(String publicId, Long ownerId) {
+        FileEntity entity = fileDao.findByPublicIdAndDeletedAtIsNull(publicId)
+                .orElseThrow(() -> new BusinessException("File not found"));
+
+        // Ownership check
+        if (!entity.getOwner().getId().equals(ownerId)) {
+            throw new BusinessException("You are not allowed to access this file");
+        }
+
+        try {
+            Path filePath = Path.of(rootDirectory, entity.getStoragePath());
+            Resource resource = new UrlResource(filePath.toUri());
+            
+            if (resource.exists() && resource.isReadable()) {
+                return resource;
+            } else {
+                throw new BusinessException("File not found on disk or not readable");
+            }
+        } catch (MalformedURLException e) {
+            log.error("Failed to load file as resource: {}", e.getMessage());
+            throw new BusinessException("Failed to load file as resource");
+        }
+    }
+
+    @Override
+    @Transactional
+    public FileUploadResult updateFile(String publicId, Long ownerId, MultipartFile multipartFile) {
+        if (multipartFile.isEmpty()) {
+            throw new BusinessException("Uploaded file must not be empty");
+        }
+
+        // Find existing file
+        FileEntity existingFile = fileDao.findByPublicIdAndDeletedAtIsNull(publicId)
+                .orElseThrow(() -> new BusinessException("File not found"));
+
+        // Ownership check
+        if (!existingFile.getOwner().getId().equals(ownerId)) {
+            throw new BusinessException("You are not allowed to update this file");
+        }
+
+        String originalFilename = multipartFile.getOriginalFilename();
+        String extension = resolveExtension(originalFilename);
+        long sizeBytes = multipartFile.getSize();
+
+        // Validate new file
+        validateFile(extension, sizeBytes);
+
+        // Delete old file from disk
+        Path oldFilePath = Path.of(rootDirectory, existingFile.getStoragePath());
+        try {
+            Files.deleteIfExists(oldFilePath);
+        } catch (IOException e) {
+            log.warn("Failed to delete old file from disk: {}", e.getMessage());
+            // Continue with update even if old file deletion fails
+        }
+
+        // Create new storage path
+        String storedName = publicId + "." + extension.toLowerCase();
+        String contentType = multipartFile.getContentType() != null
+                ? multipartFile.getContentType()
+                : "application/octet-stream";
+        String storagePath = buildStoragePath(extension, storedName);
+
+        // Write new file to disk
+        Path target = Path.of(rootDirectory, storagePath);
+        try {
+            Files.createDirectories(target.getParent());
+            multipartFile.transferTo(target);
+        } catch (IOException e) {
+            log.error("Failed to store updated file on disk", e);
+            throw new BusinessException("Failed to store updated file on disk");
+        }
+
+        // Update entity
+        existingFile.setOriginalName(originalFilename != null ? originalFilename : storedName);
+        existingFile.setStoredName(storedName);
+        existingFile.setExtension(extension.toUpperCase());
+        existingFile.setContentType(contentType);
+        existingFile.setSizeBytes(sizeBytes);
+        existingFile.setStoragePath(storagePath);
+        existingFile.setSha256Hash(null); // Reset hash as content changed
+
+        FileEntity updated = fileDao.save(existingFile);
+
+        return FileUploadResult.builder()
+                .publicId(updated.getPublicId())
+                .originalName(updated.getOriginalName())
+                .extension(updated.getExtension())
+                .sizeBytes(updated.getSizeBytes())
+                .storagePath(updated.getStoragePath())
+                .build();
+    }
+
+    @Override
     @Transactional
     public void deleteFile(Long ownerId, String publicId) {
         FileEntity entity = fileDao.findByPublicIdAndDeletedAtIsNull(publicId)
@@ -152,6 +243,24 @@ public class FileServiceImpl implements FileService {
         entity.setDeletedAt(Instant.now());
         fileDao.save(entity);
         // Physical delete can be implemented later if required
+    }
+
+    // =====================
+    // Validation helpers
+    // =====================
+
+    /**
+     * Validates file size and extension.
+     */
+    private void validateFile(String extension, long sizeBytes) {
+        if (sizeBytes > MAX_FILE_SIZE_BYTES) {
+            throw new BusinessException("File size exceeds the maximum limit of 5 MB");
+        }
+
+        String extUpper = extension.toUpperCase();
+        if (!ALLOWED_EXTENSIONS.contains(extUpper)) {
+            throw new BusinessException("File extension '" + extension + "' is not allowed");
+        }
     }
 
     // =====================

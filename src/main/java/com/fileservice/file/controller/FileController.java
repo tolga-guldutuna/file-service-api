@@ -15,6 +15,8 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.core.io.Resource;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -22,6 +24,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -39,7 +42,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/files")
 @RequiredArgsConstructor
-@Tag(name = "Files", description = "Operations for uploading, listing, reading metadata and deleting files.")
+@Tag(name = "Files", description = "Operations for uploading, listing, reading metadata, downloading and deleting files.")
 @SecurityRequirement(name = "bearerAuth")
 public class FileController {
 
@@ -82,6 +85,56 @@ public class FileController {
     }
 
     /**
+     * Downloads the actual file content as a byte stream.
+     * <p>
+     * Returns the file with appropriate content-type and content-disposition headers
+     * so that browsers can either display or download the file correctly.
+     *
+     * @param publicId public UUID of the file
+     * @param ownerId  technical identifier of the owner
+     * @return file content as Resource with proper HTTP headers
+     */
+    @GetMapping("/{publicId}/content")
+    @Operation(summary = "Download file content", 
+               description = "Returns the actual file content as a byte stream with appropriate headers for download.")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", 
+                     description = "File content successfully retrieved", 
+                     content = @Content(mediaType = "application/octet-stream")),
+        @ApiResponse(responseCode = "404", 
+                     description = "File not found", 
+                     content = @Content)
+    })
+    public ResponseEntity<Resource> downloadFile(
+            @Parameter(in = ParameterIn.PATH, 
+                      description = "Public UUID of the file.", 
+                      required = true, 
+                      example = "11111111-1111-1111-1111-111111111111")
+            @PathVariable("publicId") String publicId,
+            @Parameter(in = ParameterIn.QUERY, 
+                      description = "Technical identifier of the file owner.", 
+                      required = true, 
+                      example = "2")
+            @RequestParam("ownerId") Long ownerId) {
+        
+        Resource resource = fileService.loadFileAsResource(publicId, ownerId);
+        FileMetadataResponse metadata = fileService.getFileMetadata(publicId);
+        
+        // Determine content type
+        String contentType = metadata.getContentType();
+        if (contentType == null) {
+            contentType = "application/octet-stream";
+        }
+        
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(contentType))
+                .header(HttpHeaders.CONTENT_DISPOSITION, 
+                       "attachment; filename=\"" + metadata.getOriginalName() + "\"")
+                .header(HttpHeaders.CONTENT_LENGTH, String.valueOf(metadata.getSizeBytes()))
+                .body(resource);
+    }
+
+    /**
      * Uploads a new file for the given owner.
      * <p>
      * The file is stored on disk and its metadata is persisted in the
@@ -101,6 +154,51 @@ public class FileController {
                                                    @RequestParam("file") MultipartFile file) {
         FileUploadResult result = fileService.uploadFile(ownerId, file);
         return ResponseEntity.status(HttpStatus.CREATED).body(result);
+    }
+
+    /**
+     * Updates an existing file by replacing it with a new upload.
+     * <p>
+     * The old file content is replaced on disk and the metadata is updated.
+     * The public ID remains the same.
+     *
+     * @param publicId public UUID of the file to update
+     * @param ownerId  technical identifier of the owner
+     * @param file     new file content
+     * @return updated file metadata
+     */
+    @PutMapping(value = "/{publicId}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Operation(summary = "Update an existing file", 
+               description = "Replaces an existing file with new content. The public ID remains unchanged.")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", 
+                     description = "File successfully updated", 
+                     content = @Content(mediaType = "application/json", 
+                                      schema = @Schema(implementation = FileUploadResult.class))),
+        @ApiResponse(responseCode = "404", 
+                     description = "File not found", 
+                     content = @Content),
+        @ApiResponse(responseCode = "400", 
+                     description = "Invalid request or unsupported file type", 
+                     content = @Content)
+    })
+    public ResponseEntity<FileUploadResult> updateFile(
+            @Parameter(in = ParameterIn.PATH, 
+                      description = "Public UUID of the file to update.", 
+                      required = true, 
+                      example = "11111111-1111-1111-1111-111111111111")
+            @PathVariable("publicId") String publicId,
+            @Parameter(in = ParameterIn.QUERY, 
+                      description = "Technical identifier of the file owner.", 
+                      required = true, 
+                      example = "2")
+            @RequestParam("ownerId") Long ownerId,
+            @Parameter(description = "New file content to replace the existing file.", 
+                      required = true)
+            @RequestParam("file") MultipartFile file) {
+        
+        FileUploadResult result = fileService.updateFile(publicId, ownerId, file);
+        return ResponseEntity.ok(result);
     }
 
     /**
