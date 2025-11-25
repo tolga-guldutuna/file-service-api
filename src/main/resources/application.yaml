@@ -26,7 +26,7 @@ file-service:
   security:
     jwt:
       # WARNING: for challenge/demo only. In real systems this must come from environment.
-      secret: change-this-secret-in-production
+      secret: Y2hhbmdlLXRoaXMtc2VjcmV0LWluLXByb2R1Y3Rpb24=
       # Access token lifetime in seconds (30 minutes)
       expiration-seconds: 1800
 

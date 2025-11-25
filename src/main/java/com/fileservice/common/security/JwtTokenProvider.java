@@ -44,13 +44,13 @@ public class JwtTokenProvider {
      *     <li>A plain string (fallback for simple environments / coding challenges).</li>
      * </ul>
      */
-    @Value("${security.jwt.secret}")
+    @Value("${file-service.security.jwt.secret}")
     private String jwtSecret;
 
     /**
      * Access token time-to-live in seconds.
      */
-    @Value("${security.jwt.access-token-ttl-seconds:3600}")
+    @Value("${file-service.security.jwt.expiration-seconds:1800}")
     private long accessTokenTtlSeconds;
 
     /**

@@ -31,11 +31,4 @@ public interface UserDao extends JpaRepository<User, Long> {
      */
     boolean existsByEmail(String email);
 
-    /**
-     * Finds an active user by email.
-     *
-     * @param email unique email address of the user
-     * @return optional user if found and active, otherwise empty
-     */
-    Optional<User> findByEmailAndActiveTrue(String email);
 }
