@@ -2,6 +2,9 @@ spring:
   application:
     name: file-service-api
 
+  main:
+    allow-bean-definition-overriding: true
+
   profiles:
     default: dev
 
@@ -26,3 +29,4 @@ file-service:
       secret: change-this-secret-in-production
       # Access token lifetime in seconds (30 minutes)
       expiration-seconds: 1800
+

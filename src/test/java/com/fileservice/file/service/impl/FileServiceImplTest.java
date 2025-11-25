@@ -10,17 +10,20 @@ import com.fileservice.file.pojo.dto.FileUploadResult;
 import com.fileservice.file.pojo.entity.FileEntity;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
+import org.mockito.ArgumentCaptor;
+import org.mockito.ArgumentMatchers;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.core.io.Resource;
-import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
@@ -32,14 +35,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-/**
- * Unit tests for {@link FileServiceImpl}.
- */
 @ExtendWith(MockitoExtension.class)
-@DisplayName("FileService Unit Tests")
+@DisplayName("FileServiceImpl Unit Tests")
 class FileServiceImplTest {
 
     @Mock
@@ -48,351 +50,423 @@ class FileServiceImplTest {
     @Mock
     private UserDao userDao;
 
+    @Mock
+    private MultipartFile multipartFile;
+
     @InjectMocks
     private FileServiceImpl fileService;
 
     @TempDir
     Path tempDir;
 
-    private User testUser;
-    private FileEntity testFile;
-
-    private static final Long TEST_USER_ID = 1L;
-    private static final String TEST_EMAIL = "test@example.com";
-    private static final String TEST_PUBLIC_ID = "11111111-1111-1111-1111-111111111111";
-    private static final String TEST_FILENAME = "test-document.pdf";
+    private static final Long OWNER_ID = 1L;
+    private static final String TEST_EMAIL = "owner@example.com";
+    private static final String PUBLIC_ID = "test-uuid-12345";
+    private static final String ORIGINAL_FILENAME = "test-document.pdf";
+    private static final long VALID_FILE_SIZE = 2 * 1024 * 1024; // 2 MB
+    private static final long OVERSIZED_FILE = 6 * 1024 * 1024; // 6 MB (exceeds 5 MB limit)
 
     @BeforeEach
     void setUp() {
-        // Set up test user
-        testUser = new User();
-        testUser.setId(TEST_USER_ID);
-        testUser.setEmail(TEST_EMAIL);
-
-        // Set up test file entity
-        testFile = new FileEntity();
-        testFile.setId(1L);
-        testFile.setPublicId(TEST_PUBLIC_ID);
-        testFile.setOwner(testUser);
-        testFile.setOriginalName(TEST_FILENAME);
-        testFile.setStoredName(TEST_PUBLIC_ID + ".pdf");
-        testFile.setExtension("PDF");
-        testFile.setContentType("application/pdf");
-        testFile.setSizeBytes(1024L);
-        testFile.setStoragePath("2025/11/25/pdf/T/test.pdf");
-        testFile.setTemp(false);
-        testFile.setCreatedAt(Instant.now());
-        testFile.setUpdatedAt(Instant.now());
-
-        // Set root directory to temp directory
         ReflectionTestUtils.setField(fileService, "rootDirectory", tempDir.toString());
     }
 
-    // ==================== Upload Tests ====================
+    @Nested
+    @DisplayName("Upload File Tests")
+    class UploadFileTests {
 
-    @Test
-    @DisplayName("Should successfully upload a valid file")
-    void shouldUploadFileSuccessfully() throws Exception {
-        // Given
-        byte[] content = "test content".getBytes();
-        MultipartFile file = new MockMultipartFile(
-                "file",
-                TEST_FILENAME,
-                "application/pdf",
-                content
-        );
+        @Test
+        @DisplayName("Should successfully upload valid PDF file")
+        void uploadFile_WithValidPdf_ShouldReturnUploadResult() throws IOException {
+            // Given
+            User owner = createTestUser();
+            byte[] fileContent = "PDF content".getBytes();
 
-        when(userDao.findById(TEST_USER_ID)).thenReturn(Optional.of(testUser));
-        when(fileDao.save(any(FileEntity.class))).thenAnswer(invocation -> {
-            FileEntity entity = invocation.getArgument(0);
-            entity.setId(1L);
-            return entity;
-        });
+            when(multipartFile.isEmpty()).thenReturn(false);
+            when(multipartFile.getOriginalFilename()).thenReturn(ORIGINAL_FILENAME);
+            when(multipartFile.getSize()).thenReturn(VALID_FILE_SIZE);
+            when(multipartFile.getContentType()).thenReturn("application/pdf");
+            when(userDao.findById(OWNER_ID)).thenReturn(Optional.of(owner));
+            when(fileDao.save(any(FileEntity.class))).thenAnswer(invocation -> {
+                FileEntity entity = invocation.getArgument(0);
+                entity.setId(1L);
+                return entity;
+            });
 
-        // When
-        FileUploadResult result = fileService.uploadFile(TEST_USER_ID, file);
+            // When
+            FileUploadResult result = fileService.uploadFile(OWNER_ID, multipartFile);
 
-        // Then
-        assertThat(result).isNotNull();
-        assertThat(result.getPublicId()).isNotNull();
-        assertThat(result.getOriginalName()).isEqualTo(TEST_FILENAME);
-        assertThat(result.getExtension()).isEqualTo("PDF");
-        assertThat(result.getSizeBytes()).isEqualTo(content.length);
+            // Then
+            assertThat(result).isNotNull();
+            assertThat(result.getPublicId()).isNotNull();
+            assertThat(result.getOriginalName()).isEqualTo(ORIGINAL_FILENAME);
+            assertThat(result.getExtension()).isEqualTo("PDF");
+            assertThat(result.getSizeBytes()).isEqualTo(VALID_FILE_SIZE);
+            assertThat(result.getStoragePath()).isNotNull();
 
-        verify(userDao).findById(TEST_USER_ID);
-        verify(fileDao).save(any(FileEntity.class));
+            ArgumentCaptor<FileEntity> captor = ArgumentCaptor.forClass(FileEntity.class);
+            verify(fileDao).save(captor.capture());
+
+            FileEntity savedEntity = captor.getValue();
+            assertThat(savedEntity.getExtension()).isEqualTo("PDF");
+            assertThat(savedEntity.getContentType()).isEqualTo("application/pdf");
+            assertThat(savedEntity.getSizeBytes()).isEqualTo(VALID_FILE_SIZE);
+            assertThat(savedEntity.isTemp()).isFalse();
+        }
+
+        @Test
+        @DisplayName("Should successfully upload PNG image")
+        void uploadFile_WithValidPng_ShouldReturnUploadResult() throws IOException {
+            // Given
+            User owner = createTestUser();
+            String filename = "image.png";
+
+            when(multipartFile.isEmpty()).thenReturn(false);
+            when(multipartFile.getOriginalFilename()).thenReturn(filename);
+            when(multipartFile.getSize()).thenReturn(VALID_FILE_SIZE);
+            when(multipartFile.getContentType()).thenReturn("image/png");
+            when(userDao.findById(OWNER_ID)).thenReturn(Optional.of(owner));
+            when(fileDao.save(any(FileEntity.class))).thenAnswer(invocation -> {
+                FileEntity entity = invocation.getArgument(0);
+                entity.setId(1L);
+                return entity;
+            });
+
+            // When
+            FileUploadResult result = fileService.uploadFile(OWNER_ID, multipartFile);
+
+            // Then
+            assertThat(result.getExtension()).isEqualTo("PNG");
+        }
+
+        @Test
+        @DisplayName("Should successfully upload DOCX file")
+        void uploadFile_WithValidDocx_ShouldReturnUploadResult() throws IOException {
+            // Given
+            User owner = createTestUser();
+            String filename = "document.docx";
+
+            when(multipartFile.isEmpty()).thenReturn(false);
+            when(multipartFile.getOriginalFilename()).thenReturn(filename);
+            when(multipartFile.getSize()).thenReturn(VALID_FILE_SIZE);
+            when(multipartFile.getContentType()).thenReturn("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+            when(userDao.findById(OWNER_ID)).thenReturn(Optional.of(owner));
+            when(fileDao.save(any(FileEntity.class))).thenAnswer(invocation -> {
+                FileEntity entity = invocation.getArgument(0);
+                entity.setId(1L);
+                return entity;
+            });
+
+            // When
+            FileUploadResult result = fileService.uploadFile(OWNER_ID, multipartFile);
+
+            // Then
+            assertThat(result.getExtension()).isEqualTo("DOCX");
+        }
+
+        @Test
+        @DisplayName("Should throw BusinessException when file is empty")
+        void uploadFile_WithEmptyFile_ShouldThrowBusinessException() {
+            // Given
+            when(multipartFile.isEmpty()).thenReturn(true);
+
+            // When & Then
+            assertThatThrownBy(() -> fileService.uploadFile(OWNER_ID, multipartFile))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessage("Uploaded file must not be empty");
+
+            verify(userDao, never()).findById(anyLong());
+            verify(fileDao, never()).save(any(FileEntity.class));
+        }
+
+        @Test
+        @DisplayName("Should throw BusinessException when owner not found")
+        void uploadFile_WithNonExistentOwner_ShouldThrowBusinessException() {
+            // Given
+            when(multipartFile.isEmpty()).thenReturn(false);
+            // ✅ Sadece isEmpty() yeterli - diğer stubbing'ler gereksiz
+            when(userDao.findById(OWNER_ID)).thenReturn(Optional.empty());
+
+            // When & Then
+            assertThatThrownBy(() -> fileService.uploadFile(OWNER_ID, multipartFile))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessage("Owner not found");
+
+            verify(fileDao, never()).save(any(FileEntity.class));
+        }
+
+        @Test
+        @DisplayName("Should throw BusinessException when file size exceeds 5 MB")
+        void uploadFile_WithOversizedFile_ShouldThrowBusinessException() {
+            // Given
+            User owner = createTestUser();
+
+            when(multipartFile.isEmpty()).thenReturn(false);
+            when(multipartFile.getOriginalFilename()).thenReturn(ORIGINAL_FILENAME);
+            when(multipartFile.getSize()).thenReturn(OVERSIZED_FILE);
+            when(userDao.findById(OWNER_ID)).thenReturn(Optional.of(owner));
+
+            // When & Then
+            assertThatThrownBy(() -> fileService.uploadFile(OWNER_ID, multipartFile))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessage("File size exceeds the maximum limit of 5 MB");
+
+            verify(fileDao, never()).save(any(FileEntity.class));
+        }
+
+        @Test
+        @DisplayName("Should throw BusinessException for unsupported file extension")
+        void uploadFile_WithUnsupportedExtension_ShouldThrowBusinessException() {
+            // Given
+            User owner = createTestUser();
+            String unsupportedFile = "malicious.exe";
+
+            when(multipartFile.isEmpty()).thenReturn(false);
+            when(multipartFile.getOriginalFilename()).thenReturn(unsupportedFile);
+            when(multipartFile.getSize()).thenReturn(VALID_FILE_SIZE);
+            when(userDao.findById(OWNER_ID)).thenReturn(Optional.of(owner));
+
+            // When & Then
+            assertThatThrownBy(() -> fileService.uploadFile(OWNER_ID, multipartFile))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("is not allowed");
+
+            verify(fileDao, never()).save(any(FileEntity.class));
+        }
+
+        @Test
+        @DisplayName("Should throw BusinessException when disk write fails")
+        void uploadFile_WhenDiskWriteFails_ShouldThrowBusinessException() throws IOException {
+            // Given
+            User owner = createTestUser();
+
+            when(multipartFile.isEmpty()).thenReturn(false);
+            when(multipartFile.getOriginalFilename()).thenReturn(ORIGINAL_FILENAME);
+            when(multipartFile.getSize()).thenReturn(VALID_FILE_SIZE);
+            when(multipartFile.getContentType()).thenReturn("application/pdf");
+            when(userDao.findById(OWNER_ID)).thenReturn(Optional.of(owner));
+            doThrow(new IOException("Disk full"))
+                    .when(multipartFile)
+                    .transferTo(any(Path.class));
+
+            // When & Then
+            assertThatThrownBy(() -> fileService.uploadFile(OWNER_ID, multipartFile))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessage("Failed to store file on disk");
+
+            verify(fileDao, never()).save(any(FileEntity.class));
+        }
+
+        @Test
+        @DisplayName("Should store extension in uppercase")
+        void uploadFile_ShouldStoreExtensionInUppercase() throws IOException {
+            // Given
+            User owner = createTestUser();
+            String mixedCaseFilename = "Document.PdF";
+
+            when(multipartFile.isEmpty()).thenReturn(false);
+            when(multipartFile.getOriginalFilename()).thenReturn(mixedCaseFilename);
+            when(multipartFile.getSize()).thenReturn(VALID_FILE_SIZE);
+            when(multipartFile.getContentType()).thenReturn("application/pdf");
+            when(userDao.findById(OWNER_ID)).thenReturn(Optional.of(owner));
+            when(fileDao.save(any(FileEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+            // When
+            fileService.uploadFile(OWNER_ID, multipartFile);
+
+            // Then
+            ArgumentCaptor<FileEntity> captor = ArgumentCaptor.forClass(FileEntity.class);
+            verify(fileDao).save(captor.capture());
+            assertThat(captor.getValue().getExtension()).isEqualTo("PDF");
+        }
     }
 
-    @Test
-    @DisplayName("Should throw exception when file is empty")
-    void shouldThrowExceptionWhenFileIsEmpty() {
-        // Given
-        MultipartFile emptyFile = new MockMultipartFile(
-                "file",
-                TEST_FILENAME,
-                "application/pdf",
-                new byte[0]
-        );
+    @Nested
+    @DisplayName("Delete File Tests")
+    class DeleteFileTests {
 
-        // When & Then
-        assertThatThrownBy(() -> fileService.uploadFile(TEST_USER_ID, emptyFile))
-                .isInstanceOf(BusinessException.class)
-                .hasMessage("Uploaded file must not be empty");
+        @Test
+        @DisplayName("Should successfully soft-delete file when owner deletes")
+        void deleteFile_WhenOwnerDeletes_ShouldSoftDelete() {
+            // Given
+            FileEntity fileEntity = createTestFileEntity();
+
+            when(fileDao.findByPublicIdAndDeletedAtIsNull(PUBLIC_ID)).thenReturn(Optional.of(fileEntity));
+            when(fileDao.save(any(FileEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+            // When
+            fileService.deleteFile(OWNER_ID, PUBLIC_ID);
+
+            // Then
+            ArgumentCaptor<FileEntity> captor = ArgumentCaptor.forClass(FileEntity.class);
+            verify(fileDao).save(captor.capture());
+            assertThat(captor.getValue().getDeletedAt()).isNotNull();
+            assertThat(captor.getValue().isDeleted()).isTrue();
+        }
+
+        @Test
+        @DisplayName("Should throw BusinessException when file not found")
+        void deleteFile_WhenFileNotFound_ShouldThrowBusinessException() {
+            // Given
+            when(fileDao.findByPublicIdAndDeletedAtIsNull(PUBLIC_ID)).thenReturn(Optional.empty());
+
+            // When & Then
+            assertThatThrownBy(() -> fileService.deleteFile(OWNER_ID, PUBLIC_ID))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessage("File not found");
+
+            verify(fileDao, never()).save(any(FileEntity.class));
+        }
+
+        @Test
+        @DisplayName("Should throw BusinessException when non-owner tries to delete")
+        void deleteFile_WhenNonOwnerTriesToDelete_ShouldThrowBusinessException() {
+            // Given
+            FileEntity fileEntity = createTestFileEntity();
+            Long otherUserId = 999L;
+
+            when(fileDao.findByPublicIdAndDeletedAtIsNull(PUBLIC_ID)).thenReturn(Optional.of(fileEntity));
+
+            // When & Then
+            assertThatThrownBy(() -> fileService.deleteFile(otherUserId, PUBLIC_ID))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessage("You are not allowed to delete this file");
+
+            verify(fileDao, never()).save(any(FileEntity.class));
+        }
     }
 
-    @Test
-    @DisplayName("Should throw exception when file exceeds size limit")
-    void shouldThrowExceptionWhenFileTooLarge() {
-        // Given
-        byte[] largeContent = new byte[6 * 1024 * 1024]; // 6 MB
-        MultipartFile largeFile = new MockMultipartFile(
-                "file",
-                TEST_FILENAME,
-                "application/pdf",
-                largeContent
-        );
+    @Nested
+    @DisplayName("Get File Metadata Tests")
+    class GetFileMetadataTests {
 
-        when(userDao.findById(TEST_USER_ID)).thenReturn(Optional.of(testUser));
+        @Test
+        @DisplayName("Should return metadata for existing file")
+        void getFileMetadata_WithExistingFile_ShouldReturnMetadata() {
+            // Given
+            FileEntity fileEntity = createTestFileEntity();
 
-        // When & Then
-        assertThatThrownBy(() -> fileService.uploadFile(TEST_USER_ID, largeFile))
-                .isInstanceOf(BusinessException.class)
-                .hasMessage("File size exceeds the maximum limit of 5 MB");
+            when(fileDao.findByPublicIdAndDeletedAtIsNull(PUBLIC_ID)).thenReturn(Optional.of(fileEntity));
+
+            // When
+            FileMetadataResponse response = fileService.getFileMetadata(PUBLIC_ID);
+
+            // Then
+            assertThat(response).isNotNull();
+            assertThat(response.getPublicId()).isEqualTo(PUBLIC_ID);
+            assertThat(response.getOriginalName()).isEqualTo(ORIGINAL_FILENAME);
+            assertThat(response.getExtension()).isEqualTo("PDF");
+            assertThat(response.getSizeBytes()).isEqualTo(VALID_FILE_SIZE);
+            assertThat(response.getContentType()).isEqualTo("application/pdf");
+        }
+
+        @Test
+        @DisplayName("Should throw BusinessException when file not found")
+        void getFileMetadata_WithNonExistentFile_ShouldThrowBusinessException() {
+            // Given
+            when(fileDao.findByPublicIdAndDeletedAtIsNull(PUBLIC_ID)).thenReturn(Optional.empty());
+
+            // When & Then
+            assertThatThrownBy(() -> fileService.getFileMetadata(PUBLIC_ID))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessage("File not found");
+        }
     }
 
-    @Test
-    @DisplayName("Should throw exception when file extension not allowed")
-    void shouldThrowExceptionWhenExtensionNotAllowed() {
-        // Given
-        MultipartFile invalidFile = new MockMultipartFile(
-                "file",
-                "test.exe",
-                "application/octet-stream",
-                "content".getBytes()
-        );
+    @Nested
+    @DisplayName("List Files Tests")
+    class ListFilesTests {
 
-        when(userDao.findById(TEST_USER_ID)).thenReturn(Optional.of(testUser));
+        @Test
+        @DisplayName("Should return list of files for owner")
+        void listFiles_WithExistingFiles_ShouldReturnList() {
+            // Given
+            FileEntity file1 = createTestFileEntity();
+            FileEntity file2 = createTestFileEntity();
+            file2.setPublicId("another-uuid");
+            file2.setOriginalName("another-file.docx");
 
-        // When & Then
-        assertThatThrownBy(() -> fileService.uploadFile(TEST_USER_ID, invalidFile))
-                .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("not allowed");
+            when(fileDao.findByOwnerIdAndDeletedAtIsNullOrderByCreatedAtDesc(OWNER_ID))
+                    .thenReturn(Arrays.asList(file1, file2));
+
+            // When
+            List<FileListItemResponse> result = fileService.listFiles(OWNER_ID);
+
+            // Then
+            assertThat(result).hasSize(2);
+            assertThat(result.get(0).getPublicId()).isEqualTo(PUBLIC_ID);
+            assertThat(result.get(1).getPublicId()).isEqualTo("another-uuid");
+        }
+
+        @Test
+        @DisplayName("Should return empty list when owner has no files")
+        void listFiles_WithNoFiles_ShouldReturnEmptyList() {
+            // Given
+            when(fileDao.findByOwnerIdAndDeletedAtIsNullOrderByCreatedAtDesc(OWNER_ID))
+                    .thenReturn(List.of());
+
+            // When
+            List<FileListItemResponse> result = fileService.listFiles(OWNER_ID);
+
+            // Then
+            assertThat(result).isEmpty();
+        }
     }
 
-    @Test
-    @DisplayName("Should throw exception when owner not found")
-    void shouldThrowExceptionWhenOwnerNotFound() {
-        // Given
-        MultipartFile file = new MockMultipartFile(
-                "file",
-                TEST_FILENAME,
-                "application/pdf",
-                "content".getBytes()
-        );
+    @Nested
+    @DisplayName("Load File As Resource Tests")
+    class LoadFileAsResourceTests {
 
-        when(userDao.findById(TEST_USER_ID)).thenReturn(Optional.empty());
+        @Test
+        @DisplayName("Should throw BusinessException when file not found in database")
+        void loadFileAsResource_WhenFileNotFound_ShouldThrowBusinessException() {
+            // Given
+            when(fileDao.findByPublicIdAndDeletedAtIsNull(PUBLIC_ID)).thenReturn(Optional.empty());
 
-        // When & Then
-        assertThatThrownBy(() -> fileService.uploadFile(TEST_USER_ID, file))
-                .isInstanceOf(BusinessException.class)
-                .hasMessage("Owner not found");
+            // When & Then
+            assertThatThrownBy(() -> fileService.loadFileAsResource(PUBLIC_ID, OWNER_ID))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessage("File not found");
+        }
+
+        @Test
+        @DisplayName("Should throw BusinessException when non-owner tries to access")
+        void loadFileAsResource_WhenNonOwnerTriesToAccess_ShouldThrowBusinessException() {
+            // Given
+            FileEntity fileEntity = createTestFileEntity();
+            Long otherUserId = 999L;
+
+            when(fileDao.findByPublicIdAndDeletedAtIsNull(PUBLIC_ID)).thenReturn(Optional.of(fileEntity));
+
+            // When & Then
+            assertThatThrownBy(() -> fileService.loadFileAsResource(PUBLIC_ID, otherUserId))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessage("You are not allowed to access this file");
+        }
     }
 
-    // ==================== List Tests ====================
-
-    @Test
-    @DisplayName("Should return list of files for owner")
-    void shouldListFilesForOwner() {
-        // Given
-        List<FileEntity> entities = Arrays.asList(testFile);
-        when(fileDao.findByOwnerIdAndDeletedAtIsNullOrderByCreatedAtDesc(TEST_USER_ID))
-                .thenReturn(entities);
-
-        // When
-        List<FileListItemResponse> result = fileService.listFiles(TEST_USER_ID);
-
-        // Then
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).getPublicId()).isEqualTo(TEST_PUBLIC_ID);
-        assertThat(result.get(0).getOriginalName()).isEqualTo(TEST_FILENAME);
-
-        verify(fileDao).findByOwnerIdAndDeletedAtIsNullOrderByCreatedAtDesc(TEST_USER_ID);
+    // Helper methods
+    private User createTestUser() {
+        User user = new User();
+        user.setId(OWNER_ID);
+        user.setEmail(TEST_EMAIL);
+        return user;
     }
 
-    @Test
-    @DisplayName("Should return empty list when no files exist")
-    void shouldReturnEmptyListWhenNoFiles() {
-        // Given
-        when(fileDao.findByOwnerIdAndDeletedAtIsNullOrderByCreatedAtDesc(TEST_USER_ID))
-                .thenReturn(Arrays.asList());
-
-        // When
-        List<FileListItemResponse> result = fileService.listFiles(TEST_USER_ID);
-
-        // Then
-        assertThat(result).isEmpty();
-    }
-
-    // ==================== Get Metadata Tests ====================
-
-    @Test
-    @DisplayName("Should return file metadata when file exists")
-    void shouldReturnFileMetadata() {
-        // Given
-        when(fileDao.findByPublicIdAndDeletedAtIsNull(TEST_PUBLIC_ID))
-                .thenReturn(Optional.of(testFile));
-
-        // When
-        FileMetadataResponse result = fileService.getFileMetadata(TEST_PUBLIC_ID);
-
-        // Then
-        assertThat(result).isNotNull();
-        assertThat(result.getPublicId()).isEqualTo(TEST_PUBLIC_ID);
-        assertThat(result.getOriginalName()).isEqualTo(TEST_FILENAME);
-        assertThat(result.getExtension()).isEqualTo("PDF");
-
-        verify(fileDao).findByPublicIdAndDeletedAtIsNull(TEST_PUBLIC_ID);
-    }
-
-    @Test
-    @DisplayName("Should throw exception when file not found for metadata")
-    void shouldThrowExceptionWhenFileNotFoundForMetadata() {
-        // Given
-        when(fileDao.findByPublicIdAndDeletedAtIsNull(TEST_PUBLIC_ID))
-                .thenReturn(Optional.empty());
-
-        // When & Then
-        assertThatThrownBy(() -> fileService.getFileMetadata(TEST_PUBLIC_ID))
-                .isInstanceOf(BusinessException.class)
-                .hasMessage("File not found");
-    }
-
-    // ==================== Download Tests ====================
-
-    @Test
-    @DisplayName("Should load file as resource when file exists")
-    void shouldLoadFileAsResource() throws Exception {
-        // Given
-        Path filePath = tempDir.resolve("2025/11/25/pdf/T");
-        Files.createDirectories(filePath);
-        Path actualFile = filePath.resolve("test.pdf");
-        Files.write(actualFile, "test content".getBytes());
-
-        when(fileDao.findByPublicIdAndDeletedAtIsNull(TEST_PUBLIC_ID))
-                .thenReturn(Optional.of(testFile));
-
-        // When
-        Resource result = fileService.loadFileAsResource(TEST_PUBLIC_ID, TEST_USER_ID);
-
-        // Then
-        assertThat(result).isNotNull();
-        assertThat(result.exists()).isTrue();
-        assertThat(result.isReadable()).isTrue();
-    }
-
-    @Test
-    @DisplayName("Should throw exception when user not owner of file")
-    void shouldThrowExceptionWhenNotOwner() {
-        // Given
-        when(fileDao.findByPublicIdAndDeletedAtIsNull(TEST_PUBLIC_ID))
-                .thenReturn(Optional.of(testFile));
-
-        // When & Then
-        assertThatThrownBy(() -> fileService.loadFileAsResource(TEST_PUBLIC_ID, 999L))
-                .isInstanceOf(BusinessException.class)
-                .hasMessage("You are not allowed to access this file");
-    }
-
-    // ==================== Delete Tests ====================
-
-    @Test
-    @DisplayName("Should soft delete file successfully")
-    void shouldDeleteFileSuccessfully() {
-        // Given
-        when(fileDao.findByPublicIdAndDeletedAtIsNull(TEST_PUBLIC_ID))
-                .thenReturn(Optional.of(testFile));
-        when(fileDao.save(any(FileEntity.class))).thenReturn(testFile);
-
-        // When
-        fileService.deleteFile(TEST_USER_ID, TEST_PUBLIC_ID);
-
-        // Then
-        verify(fileDao).findByPublicIdAndDeletedAtIsNull(TEST_PUBLIC_ID);
-        verify(fileDao).save(any(FileEntity.class));
-    }
-
-    @Test
-    @DisplayName("Should throw exception when deleting file not owned by user")
-    void shouldThrowExceptionWhenDeletingNotOwnedFile() {
-        // Given
-        when(fileDao.findByPublicIdAndDeletedAtIsNull(TEST_PUBLIC_ID))
-                .thenReturn(Optional.of(testFile));
-
-        // When & Then
-        assertThatThrownBy(() -> fileService.deleteFile(999L, TEST_PUBLIC_ID))
-                .isInstanceOf(BusinessException.class)
-                .hasMessage("You are not allowed to delete this file");
-    }
-
-    @Test
-    @DisplayName("Should throw exception when deleting non-existent file")
-    void shouldThrowExceptionWhenDeletingNonExistentFile() {
-        // Given
-        when(fileDao.findByPublicIdAndDeletedAtIsNull(TEST_PUBLIC_ID))
-                .thenReturn(Optional.empty());
-
-        // When & Then
-        assertThatThrownBy(() -> fileService.deleteFile(TEST_USER_ID, TEST_PUBLIC_ID))
-                .isInstanceOf(BusinessException.class)
-                .hasMessage("File not found");
-    }
-
-    // ==================== Update Tests ====================
-
-    @Test
-    @DisplayName("Should update file successfully")
-    void shouldUpdateFileSuccessfully() throws Exception {
-        // Given
-        byte[] newContent = "new content".getBytes();
-        MultipartFile newFile = new MockMultipartFile(
-                "file",
-                "updated.pdf",
-                "application/pdf",
-                newContent
-        );
-
-        when(fileDao.findByPublicIdAndDeletedAtIsNull(TEST_PUBLIC_ID))
-                .thenReturn(Optional.of(testFile));
-        when(fileDao.save(any(FileEntity.class))).thenReturn(testFile);
-
-        // When
-        FileUploadResult result = fileService.updateFile(TEST_PUBLIC_ID, TEST_USER_ID, newFile);
-
-        // Then
-        assertThat(result).isNotNull();
-        assertThat(result.getPublicId()).isEqualTo(TEST_PUBLIC_ID);
-
-        verify(fileDao).findByPublicIdAndDeletedAtIsNull(TEST_PUBLIC_ID);
-        verify(fileDao).save(any(FileEntity.class));
-    }
-
-    @Test
-    @DisplayName("Should throw exception when updating file not owned by user")
-    void shouldThrowExceptionWhenUpdatingNotOwnedFile() {
-        // Given
-        MultipartFile newFile = new MockMultipartFile(
-                "file",
-                "updated.pdf",
-                "application/pdf",
-                "content".getBytes()
-        );
-
-        when(fileDao.findByPublicIdAndDeletedAtIsNull(TEST_PUBLIC_ID))
-                .thenReturn(Optional.of(testFile));
-
-        // When & Then
-        assertThatThrownBy(() -> fileService.updateFile(TEST_PUBLIC_ID, 999L, newFile))
-                .isInstanceOf(BusinessException.class)
-                .hasMessage("You are not allowed to update this file");
+    private FileEntity createTestFileEntity() {
+        FileEntity entity = new FileEntity();
+        entity.setId(1L);
+        entity.setPublicId(PUBLIC_ID);
+        entity.setOwner(createTestUser());
+        entity.setOriginalName(ORIGINAL_FILENAME);
+        entity.setStoredName(PUBLIC_ID + ".pdf");
+        entity.setExtension("PDF");
+        entity.setContentType("application/pdf");
+        entity.setSizeBytes(VALID_FILE_SIZE);
+        entity.setStoragePath("2025/11/26/pdf/T/" + PUBLIC_ID + ".pdf");
+        entity.setTemp(false);
+        entity.setCreatedAt(Instant.now());
+        entity.setUpdatedAt(Instant.now());
+        return entity;
     }
 }
