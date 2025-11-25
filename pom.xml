@@ -21,7 +21,7 @@
     <description>file-service-api</description>
 
     <properties>
-        <java.version>24</java.version>
+        <java.version>21</java.version>
         <jjwt.version>0.12.5</jjwt.version>
     </properties>
 
@@ -83,8 +83,15 @@
             <optional>true</optional>
         </dependency>
 
-        <!-- Test -->
+        <!-- Swagger - Open Api -->
         <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+            <version>3.0.0</version>
+        </dependency>
+
+        <!-- Test -->
+<!--        <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
@@ -98,11 +105,37 @@
             <groupId>org.assertj</groupId>
             <artifactId>assertj-core</artifactId>
             <scope>test</scope>
-        </dependency>
+        </dependency>-->
     </dependencies>
 
     <build>
         <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <version>3.1.0</version>
+                <executions>
+                    <execution>
+                        <id>print-banner</id>
+                        <!-- Ne zaman çalışsın? validate aşamasında yeterli -->
+                        <phase>validate</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target>
+                                <!-- banner.txt içeriğini property olarak yükle -->
+                                <loadfile property="banner.text"
+                                          srcFile="${project.basedir}/src/main/resources/banner.txt"/>
+                                <!-- ve Maven çıktısına yaz -->
+                                <echo level="info" message="${banner.text}"/>
+                            </target>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+
             <!-- Spring Boot -->
             <plugin>
                 <groupId>org.springframework.boot</groupId>

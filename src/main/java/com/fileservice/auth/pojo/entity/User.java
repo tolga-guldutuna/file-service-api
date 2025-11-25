@@ -49,72 +49,10 @@ public class User {
 
     /**
      * BCrypt (or other algorithm) encoded password.
-     * Mapped to {@code password_hash} in the database.
+     * Mapped to {@code password} in the database.
      */
-    @Column(name = "password_hash", nullable = false, length = 255)
-    private String passwordHash;
+    @Column(name = "password", nullable = false, length = 255)
+    private String password;
 
-    /**
-     * Optional full name of the user.
-     */
-    @Column(name = "full_name", length = 255)
-    private String fullName;
 
-    /**
-     * Flag indicating whether the user is active.
-     */
-    @Column(name = "is_active", nullable = false)
-    private boolean active = true;
-
-    /**
-     * Timestamp when the user was created.
-     * Automatically populated by Hibernate.
-     */
-    @CreationTimestamp
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt;
-
-    /**
-     * Timestamp when the user was last updated.
-     * Automatically updated by Hibernate on each change.
-     */
-    @UpdateTimestamp
-    @Column(name = "updated_at", nullable = false)
-    private LocalDateTime updatedAt;
-
-    /**
-     * Roles assigned to this user.
-     * <p>
-     * This is the owning side of the many-to-many association and uses the
-     * {@code user_roles} join table as defined in the H2 schema.
-     */
-    @ManyToMany(fetch = FetchType.LAZY)
-    @JoinTable(
-            name = "user_roles",
-            joinColumns = @JoinColumn(name = "user_id", referencedColumnName = "id"),
-            inverseJoinColumns = @JoinColumn(name = "role_id", referencedColumnName = "id")
-    )
-    private Set<Role> roles = new HashSet<>();
-
-    /**
-     * Adds a single role to the user.
-     *
-     * @param role role to be added
-     */
-    public void addRole(Role role) {
-        if (role != null) {
-            this.roles.add(role);
-        }
-    }
-
-    /**
-     * Removes a single role from the user.
-     *
-     * @param role role to be removed
-     */
-    public void removeRole(Role role) {
-        if (role != null) {
-            this.roles.remove(role);
-        }
-    }
 }
