@@ -1,62 +1,76 @@
 package com.fileservice.file.pojo.dto;
 
 import io.swagger.v3.oas.annotations.media.Schema;
-import lombok.AllArgsConstructor;
+import java.time.Instant;
 import lombok.Builder;
 import lombok.Data;
-import lombok.NoArgsConstructor;
-
-import java.time.LocalDateTime;
 
 /**
- * Lightweight representation of a file used for listing in tables or dashboards.
+ * Lightweight representation of a stored file used in list endpoints.
+ * <p>
+ * This DTO is intentionally small so that it can be returned efficiently when
+ * listing all files of a user. For detailed information, use
+ * {@link FileMetadataResponse}.
  */
 @Data
 @Builder
-@AllArgsConstructor
-@NoArgsConstructor
-@Schema(description = "File list item view used in dashboard tables.")
+@Schema(name = "FileListItemResponse",
+        description = "Represents a single file row in the file list API.")
 public class FileListItemResponse {
 
     /**
-     * Public identifier of the file.
+     * Public UUID of the file exposed in URLs instead of the internal numeric id.
      */
-    @Schema(description = "Public UUID that uniquely identifies the file.", example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
+    @Schema(description = "Public UUID of the file.",
+            example = "11111111-1111-1111-1111-111111111111",
+            requiredMode = Schema.RequiredMode.REQUIRED)
     private String publicId;
 
     /**
-     * Display name of the file (usually the original name).
+     * Original filename as provided by the client during upload.
      */
-    @Schema(description = "Human readable file name that is shown in the UI.", example = "Project_Proposal.pdf")
-    private String name;
+    @Schema(description = "Original filename provided during upload.",
+            example = "Kimlik_Fotokopisi.pdf",
+            requiredMode = Schema.RequiredMode.REQUIRED)
+    private String originalName;
 
     /**
-     * File extension (e.g. PDF, PNG, DOCX).
+     * File extension in upper case (e.g. PDF, PNG, DOCX).
      */
-    @Schema(description = "File extension in upper-case.", example = "PDF")
+    @Schema(description = "File extension in upper case.",
+            example = "PDF",
+            requiredMode = Schema.RequiredMode.REQUIRED)
     private String extension;
 
     /**
-     * MIME type of the file.
+     * MIME content type of the file.
      */
-    @Schema(description = "MIME content type of the file.", example = "application/pdf")
+    @Schema(description = "MIME content type of the file.",
+            example = "application/pdf",
+            requiredMode = Schema.RequiredMode.REQUIRED)
     private String contentType;
 
     /**
-     * Size of the file in bytes.
+     * File size in bytes.
      */
-    @Schema(description = "File size in bytes.", example = "1200000")
+    @Schema(description = "File size in bytes.",
+            example = "24576",
+            requiredMode = Schema.RequiredMode.REQUIRED)
     private long sizeBytes;
 
     /**
-     * Creation timestamp used in sorted lists or audit views.
+     * Creation timestamp of the file metadata.
      */
-    @Schema(description = "Creation timestamp of the file metadata.", example = "2024-11-23T10:15:30")
-    private LocalDateTime createdAt;
+    @Schema(description = "Creation timestamp of the file metadata.",
+            example = "2025-11-25T10:15:30Z",
+            requiredMode = Schema.RequiredMode.REQUIRED)
+    private Instant createdAt;
 
     /**
-     * Flag indicating whether this file can be previewed inline (image/PDF).
+     * Flag indicating whether the file is marked as temporary.
      */
-    @Schema(description = "Indicates whether the file type can be previewed in the UI (PDF, PNG, JPG).", example = "true")
-    private boolean canPreview;
+    @Schema(description = "Flag indicating whether the file is temporary.",
+            example = "false",
+            requiredMode = Schema.RequiredMode.REQUIRED)
+    private boolean temp;
 }

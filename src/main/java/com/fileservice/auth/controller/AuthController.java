@@ -41,17 +41,10 @@ public class AuthController {
      * @return {@link LoginResponse} with JWT token and basic user information
      */
     @PostMapping("/login")
-    @Operation(summary = "Authenticate user and obtain JWT",
-            description = "Validates the provided credentials and returns a signed JWT access token.")
-    @ApiResponse(responseCode = "200",
-            description = "Authentication successful",
-            content = @Content(schema = @Schema(implementation = LoginResponse.class)))
-    @ApiResponse(responseCode = "400",
-            description = "Validation error in request payload",
-            content = @Content)
-    @ApiResponse(responseCode = "401",
-            description = "Invalid email or password",
-            content = @Content)
+    @Operation(summary = "Authenticate user and obtain JWT", description = "Validates the provided credentials and returns a signed JWT access token.")
+    @ApiResponse(responseCode = "200", description = "Authentication successful", content = @Content(schema = @Schema(implementation = LoginResponse.class)))
+    @ApiResponse(responseCode = "400", description = "Validation error in request payload", content = @Content)
+    @ApiResponse(responseCode = "401", description = "Invalid email or password", content = @Content)
     public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
         LoginResponse response = authService.login(request);
         return ResponseEntity.ok(response);
@@ -67,14 +60,9 @@ public class AuthController {
      * @return {@link UserDto} for the newly created user
      */
     @PostMapping("/register")
-    @Operation(summary = "Register new user",
-            description = "Creates a new user account with the provided credentials.")
-    @ApiResponse(responseCode = "201",
-            description = "User successfully created",
-            content = @Content(schema = @Schema(implementation = UserDto.class)))
-    @ApiResponse(responseCode = "400",
-            description = "Validation error or business rule violation (e.g. email already in use)",
-            content = @Content)
+    @Operation(summary = "Register new user", description = "Creates a new user account with the provided credentials.")
+    @ApiResponse(responseCode = "201", description = "User successfully created", content = @Content(schema = @Schema(implementation = UserDto.class)))
+    @ApiResponse(responseCode = "400", description = "Validation error or business rule violation (e.g. email already in use)", content = @Content)
     public ResponseEntity<UserDto> register(@Valid @RequestBody RegisterUserRequest request) {
         UserDto created = authService.register(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);

@@ -1,60 +1,56 @@
 package com.fileservice.file.pojo.dto;
 
 import io.swagger.v3.oas.annotations.media.Schema;
-import lombok.AllArgsConstructor;
+import java.time.Instant;
 import lombok.Builder;
 import lombok.Data;
-import lombok.NoArgsConstructor;
-
-import java.time.LocalDateTime;
 
 /**
- * Detailed metadata representation of a single file.
+ * Detailed metadata representation for a single stored file.
  * <p>
- * This DTO is typically returned from a "get file details" endpoint.
+ * This DTO is typically used by endpoints that fetch information about
+ * a specific file identified by its public id.
  */
 @Data
 @Builder
-@AllArgsConstructor
-@NoArgsConstructor
-@Schema(description = "Detailed file metadata used for the file details view.")
+@Schema(name = "FileMetadataResponse",
+        description = "Detailed metadata of a single stored file.")
 public class FileMetadataResponse {
 
     /**
-     * Public identifier used in URLs to reference the file.
+     * Public UUID of the file used in external URLs.
      */
-    @Schema(description = "Public UUID that uniquely identifies the file.",
-            example = "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+    @Schema(description = "Public UUID of the file.",
+            example = "11111111-1111-1111-1111-111111111111",
             requiredMode = Schema.RequiredMode.REQUIRED)
     private String publicId;
 
     /**
-     * Original filename as uploaded by the client.
+     * Original filename supplied by the client during upload.
      */
-    @Schema(description = "Original filename as uploaded by the client.",
-            example = "Meeting_Notes_Q4_2024.pdf",
+    @Schema(description = "Original filename provided during upload.",
+            example = "Kimlik_Fotokopisi.pdf",
             requiredMode = Schema.RequiredMode.REQUIRED)
     private String originalName;
 
     /**
-     * Physical filename on disk.
-     * <p>
-     * May or may not be exposed to the client depending on security decisions.
+     * Physical filename used on disk (usually publicId + extension).
      */
-
-    @Schema(description = "Physical filename on disk. Usually derived from a UUID plus extension.", example = "3fa85f64-5717-4562-b3fc-2c963f66afa6.pdf")
+    @Schema(description = "Physical filename stored on disk.",
+            example = "11111111-1111-1111-1111-111111111111.pdf",
+            requiredMode = Schema.RequiredMode.REQUIRED)
     private String storedName;
 
     /**
-     * File extension (e.g. PDF, PNG, DOCX).
+     * File extension in upper case.
      */
-    @Schema(description = "Upper-case file extension.",
+    @Schema(description = "File extension in upper case.",
             example = "PDF",
             requiredMode = Schema.RequiredMode.REQUIRED)
     private String extension;
 
     /**
-     * MIME type of the file.
+     * MIME content type of the file.
      */
     @Schema(description = "MIME content type of the file.",
             example = "application/pdf",
@@ -62,72 +58,63 @@ public class FileMetadataResponse {
     private String contentType;
 
     /**
-     * Size of the file in bytes.
+     * File size in bytes.
      */
     @Schema(description = "File size in bytes.",
-            example = "1258291",
+            example = "24576",
             requiredMode = Schema.RequiredMode.REQUIRED)
     private long sizeBytes;
 
     /**
-     * Relative storage path used by the backend.
+     * Relative storage path used by the backend to locate the file on disk.
      */
-    @Schema(description = "Relative storage path used by the backend.", example = "2025/11/23/P/3fa85f64-5717-4562-b3fc-2c963f66afa6.pdf")
+    @Schema(description = "Relative storage path used by the backend to locate the file.",
+            example = "2025/11/25/pdf/K/11111111-1111-1111-1111-111111111111.pdf",
+            requiredMode = Schema.RequiredMode.REQUIRED)
     private String storagePath;
 
     /**
-     * Optional SHA-256 hash of the file content.
+     * Optional SHA-256 hash of the file contents, if computed.
      */
-    @Schema(description = "Optional SHA-256 hash of the file content.", example = "b1946ac92492d2347c6235b4d2611184b1946ac92492d2347c6235b4d2611184")
+    @Schema(description = "Optional SHA-256 hash of the file contents.",
+            example = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
     private String sha256Hash;
 
     /**
-     * Indicates whether this file is temporary.
+     * Flag indicating whether the file is temporary.
      */
-    @Schema(description = "Indicates whether this file is temporary.", example = "false")
+    @Schema(description = "Flag indicating whether the file is temporary.",
+            example = "false",
+            requiredMode = Schema.RequiredMode.REQUIRED)
     private boolean temp;
 
     /**
      * Optional expiration timestamp for temporary files.
      */
-    @Schema(description = "Optional expiration timestamp for temporary files.", example = "2024-12-01T10:15:30")
-    private LocalDateTime expiresAt;
+    @Schema(description = "Optional expiration timestamp for temporary files.",
+            example = "2025-11-30T23:59:59Z")
+    private Instant expiresAt;
 
     /**
-     * Timestamp when the file record was created.
+     * Creation timestamp stored in the database.
      */
-    @Schema(description = "Timestamp when the file record was created.",
-            example = "2024-11-23T10:15:30",
+    @Schema(description = "Creation timestamp of the file metadata.",
+            example = "2025-11-25T10:15:30Z",
             requiredMode = Schema.RequiredMode.REQUIRED)
-    private LocalDateTime createdAt;
+    private Instant createdAt;
 
     /**
-     * Timestamp when the file record was last updated.
+     * Last update timestamp stored in the database.
      */
-    @Schema(description = "Timestamp when the file record was last updated.",
-            example = "2024-11-23T11:00:00",
+    @Schema(description = "Last update timestamp of the file metadata.",
+            example = "2025-11-25T11:00:00Z",
             requiredMode = Schema.RequiredMode.REQUIRED)
-    private LocalDateTime updatedAt;
+    private Instant updatedAt;
 
     /**
-     * Timestamp when the file was logically deleted, if applicable.
+     * Soft-delete timestamp. If non-null, the file is considered logically deleted.
      */
-    @Schema(description = "Timestamp when the file was logically deleted, if applicable.", example = "2024-11-30T09:45:00")
-    private LocalDateTime deletedAt;
-
-    /**
-     * Identifier of the owner user.
-     */
-    @Schema(description = "Identifier of the owner user.",
-            example = "1",
-            requiredMode = Schema.RequiredMode.REQUIRED)
-    private Long ownerId;
-
-    /**
-     * Email of the owner user.
-     */
-    @Schema(description = "Email of the owner user.",
-            example = "john.doe@example.com",
-            requiredMode = Schema.RequiredMode.REQUIRED)
-    private String ownerEmail;
+    @Schema(description = "Soft-delete timestamp. When set, the file is considered deleted.",
+            example = "2025-11-26T09:00:00Z")
+    private Instant deletedAt;
 }

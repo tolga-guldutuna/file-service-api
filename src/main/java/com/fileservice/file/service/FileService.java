@@ -3,62 +3,45 @@ package com.fileservice.file.service;
 import com.fileservice.file.pojo.dto.FileListItemResponse;
 import com.fileservice.file.pojo.dto.FileMetadataResponse;
 import com.fileservice.file.pojo.dto.FileUploadResult;
-import java.util.UUID;
-import org.springframework.core.io.Resource;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.List;
+
 /**
- * Service responsible for managing files and their metadata.
- * <p>
- * This service encapsulates both persistence (database) and physical
- * storage (file system) concerns behind a clean API.
+ * Business service exposing high-level file operations used by controllers.
  */
 public interface FileService {
 
     /**
-     * Stores a new file for the given owner.
+     * Stores the given multipart file on disk and persists its metadata.
      *
-     * @param file    multipart file received from the client
-     * @param ownerId identifier of the user who uploads the file
-     * @return a {@link FileUploadResult} containing basic information and a download URL
+     * @param ownerId id of the authenticated user uploading the file
+     * @param file    file payload sent by the client
+     * @return {@link FileUploadResult} describing the stored file
      */
-    FileUploadResult uploadFile(MultipartFile file, Long ownerId);
+    FileUploadResult uploadFile(Long ownerId, MultipartFile file);
 
     /**
-     * Returns a paged list of files owned by the given user.
+     * Returns a read-only list of files owned by the given user.
      *
-     * @param ownerId  identifier of the file owner
-     * @param pageable pagination information
-     * @return a page of {@link FileListItemResponse}
+     * @param ownerId id of the authenticated user
+     * @return list of lightweight file representations
      */
-    Page<FileListItemResponse> listFilesForOwner(Long ownerId, Pageable pageable);
+    List<FileListItemResponse> listFiles(Long ownerId);
 
     /**
-     * Returns detailed metadata for a single file identified by its public UUID
-     * and owned by the given user.
+     * Returns detailed metadata for the file identified by the given public id.
      *
      * @param publicId public UUID of the file
-     * @param ownerId  identifier of the owner
-     * @return a {@link FileMetadataResponse}
+     * @return detailed metadata
      */
-    FileMetadataResponse getFileMetadata(UUID publicId, Long ownerId);
+    FileMetadataResponse getFileMetadata(String publicId);
 
     /**
-     * Loads the physical file as a Spring {@link Resource} for download.
+     * Marks the file identified by the given public id as soft-deleted.
      *
+     * @param ownerId  id of the authenticated user
      * @param publicId public UUID of the file
-     * @param ownerId  identifier of the owner
-     * @return file content wrapped as a {@link Resource}
      */
-    Resource loadFileAsResource(UUID publicId, Long ownerId);
-
-    /**
-     * Performs a logical delete of the file (soft delete).
-     *
-     * @param publicId public UUID of the file
-     * @param ownerId  identifier of the owner
-     */
-    void deleteFile(UUID publicId, Long ownerId);
+    void deleteFile(Long ownerId, String publicId);
 }

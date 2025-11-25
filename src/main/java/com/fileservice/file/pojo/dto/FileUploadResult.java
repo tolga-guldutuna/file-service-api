@@ -1,58 +1,58 @@
 package com.fileservice.file.pojo.dto;
 
 import io.swagger.v3.oas.annotations.media.Schema;
-import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
-import lombok.NoArgsConstructor;
 
 /**
- * DTO returned after a successful file upload operation.
+ * Response returned after a successful file upload operation.
+ * <p>
+ * This DTO contains enough information for the client to reference or display
+ * the uploaded file without exposing internal implementation details.
  */
 @Data
 @Builder
-@AllArgsConstructor
-@NoArgsConstructor
-@Schema(description = "Response returned after a file has been uploaded successfully.")
+@Schema(name = "FileUploadResult",
+        description = "Result of a successful file upload operation.")
 public class FileUploadResult {
 
     /**
-     * Public identifier of the uploaded file.
+     * Public UUID of the uploaded file that can be used in subsequent API calls.
      */
-    @Schema(description = "Public UUID that uniquely identifies the uploaded file.",
-            example = "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+    @Schema(description = "Public UUID of the uploaded file.",
+            example = "22222222-2222-2222-2222-222222222222",
             requiredMode = Schema.RequiredMode.REQUIRED)
     private String publicId;
 
     /**
-     * Original filename as uploaded by the client.
+     * Original filename provided by the client during upload.
      */
-    @Schema(description = "Original filename as provided by the client.",
-            example = "Meeting_Notes_Q4_2024.pdf",
+    @Schema(description = "Original filename provided during upload.",
+            example = "Maas_Bordrosu_Ekim_2025.xlsx",
             requiredMode = Schema.RequiredMode.REQUIRED)
     private String originalName;
 
     /**
-     * File extension (e.g. PDF, PNG, DOCX).
+     * File extension in upper case.
      */
-    @Schema(description = "Upper-case file extension.",
-            example = "PDF",
+    @Schema(description = "File extension in upper case.",
+            example = "XLSX",
             requiredMode = Schema.RequiredMode.REQUIRED)
     private String extension;
 
     /**
-     * Size of the file in bytes.
+     * File size in bytes.
      */
-    @Schema(description = "Size of the file in bytes.",
-            example = "1258291",
+    @Schema(description = "File size in bytes.",
+            example = "32768",
             requiredMode = Schema.RequiredMode.REQUIRED)
     private long sizeBytes;
 
     /**
-     * Optional direct download URL.
-     * <p>
-     * The API may choose to return a pre-built URL for convenience.
+     * Relative storage path pointing to where the file is stored on the backend.
      */
-    @Schema(description = "MIME content type of the uploaded file.", example = "application/pdf")
-    private String downloadUrl;
+    @Schema(description = "Relative storage path used by the backend to access the file.",
+            example = "2025/11/25/xlsx/M/22222222-2222-2222-2222-222222222222.xlsx",
+            requiredMode = Schema.RequiredMode.REQUIRED)
+    private String storagePath;
 }
