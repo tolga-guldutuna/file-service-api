@@ -1,7 +1,7 @@
 package com.fileservice.file.service.impl;
 
-import com.fileservice.auth.pojo.entity.User;
 import com.fileservice.auth.dao.UserDao;
+import com.fileservice.auth.pojo.entity.User;
 import com.fileservice.common.exception.BusinessException;
 import com.fileservice.file.dao.FileDao;
 import com.fileservice.file.pojo.dto.FileListItemResponse;
@@ -9,20 +9,22 @@ import com.fileservice.file.pojo.dto.FileMetadataResponse;
 import com.fileservice.file.pojo.dto.FileUploadResult;
 import com.fileservice.file.pojo.entity.FileEntity;
 import com.fileservice.file.service.FileService;
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.time.Instant;
-import java.time.LocalDate;
-import java.util.List;
-import java.util.UUID;
-import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * Default implementation of {@link FileService} that stores files on the local
@@ -32,6 +34,12 @@ import org.springframework.web.multipart.MultipartFile;
 @Service
 @RequiredArgsConstructor
 public class FileServiceImpl implements FileService {
+
+    private static final long MAX_FILE_SIZE_BYTES = 5L * 1024 * 1024; // 5 MB
+
+    private static final Set<String> ALLOWED_EXTENSIONS = Set.of(
+            "PNG", "JPEG", "JPG", "DOCX", "PDF", "XLSX"
+    );
 
     private final FileDao fileDao;
     private final UserDao userDao;
@@ -56,12 +64,25 @@ public class FileServiceImpl implements FileService {
 
         String originalFilename = multipartFile.getOriginalFilename();
         String extension = resolveExtension(originalFilename);
+        long sizeBytes = multipartFile.getSize();
+
+        // =========================
+        // Service-level validation
+        // =========================
+        if (sizeBytes > MAX_FILE_SIZE_BYTES) {
+            throw new BusinessException("File size exceeds the maximum limit of 5 MB");
+        }
+
+        String extUpper = extension.toUpperCase();
+        if (!ALLOWED_EXTENSIONS.contains(extUpper)) {
+            throw new BusinessException("File extension '" + extension + "' is not allowed");
+        }
+
         String publicId = UUID.randomUUID().toString();
         String storedName = publicId + "." + extension.toLowerCase();
         String contentType = multipartFile.getContentType() != null
                 ? multipartFile.getContentType()
                 : "application/octet-stream";
-        long sizeBytes = multipartFile.getSize();
 
         // Build storage path: yyyy/MM/dd/<ext>/<first-letter>/<uuid.ext>
         String storagePath = buildStoragePath(extension, storedName);
@@ -81,7 +102,7 @@ public class FileServiceImpl implements FileService {
         entity.setOwner(owner);
         entity.setOriginalName(originalFilename != null ? originalFilename : storedName);
         entity.setStoredName(storedName);
-        entity.setExtension(extension.toUpperCase());
+        entity.setExtension(extUpper);
         entity.setContentType(contentType);
         entity.setSizeBytes(sizeBytes);
         entity.setStoragePath(storagePath);
