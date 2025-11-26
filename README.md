@@ -30,7 +30,7 @@
 |  | | - Coverage: ~70% |
 | **Postman collection** | ✅ | Complete with auto-token capture |
 |  | | 8 endpoints with test scripts |
-| React/Angular/Vue UI | 📋 | Planned (architecture documented) |
+| React/Angular/Vue UI | ✅ | Completed UI |
 
 ---
 
