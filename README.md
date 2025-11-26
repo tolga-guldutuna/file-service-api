@@ -1,4 +1,4 @@
-# File Service API - ETSTUR Challenge Solution
+# File Service API - Challenge Solution
 
 ## ✅ Challenge Gereksinimlerinin Karşılanma Durumu
 
